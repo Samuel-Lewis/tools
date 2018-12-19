@@ -1,112 +1,80 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"math"
+	"image/png"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"github.com/alecthomas/kingpin"
+	"github.com/kbinani/screenshot"
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	cache     = kingpin.Flag("cache", "Use a warmup run to test cache").Short('c').Bool()
-	calibrate = kingpin.Flag("calibrate", "Runs a 1 second calibration to adjust for potential overhead").Short('a').Bool()
-	command   = kingpin.Arg("command", "Command to execute").Required().Strings()
-	output    = kingpin.Flag("output", "Enable output of original command to stdout and stderr").Short('o').Bool()
-	runs      = kingpin.Flag("runs", "[WIP] Number of instances to run").Default("1").Short('r').Int()
-	shell     = kingpin.Flag("shell", "Shell environment to execute command").Default("sh -c").String()
-	verbose   = kingpin.Flag("verbose", "Verbose mode").Short('v').Bool()
+	display  = kingpin.Flag("display", "List of displays to capture").Default("0").Short('d').Ints()
+	interval = kingpin.Flag("interval", "Seconds between screenshots").Default("5").Short('i').Int()
+	limit    = kingpin.Flag("limit", "Limit the number of screenshots (-1 is inifite)").Default("-1").Short('l').Int()
+	prefix   = kingpin.Flag("prefix", "Prefix all file names (useful for sorting or naming)").Default("").Short('p').String()
+	verbose  = kingpin.Flag("verbose", "Verbose mode").Short('v').Bool()
+	dirName  = ""
 )
 
-// TimeCmd executes a command cmd and times its duration
-func TimeCmd(c []string, label string) time.Duration {
-	cmd := exec.Command(c[0], c[1:]...)
-
-	var outc, errc bytes.Buffer
-	cmd.Stdout = &outc
-	cmd.Stderr = &errc
-
-	if *output {
-		outc.WriteTo(os.Stdout)
-		errc.WriteTo(os.Stderr)
-	}
-
-	// Predeclare variables to save allocation time in time sensitive
-	var start time.Time
-	var elapsed time.Duration
-	var err error
-
-	log.Debugln("Running instance:", label)
-	start = time.Now()
-	err = cmd.Run()
-	elapsed = time.Since(start)
-
+func capture(d int, i int) {
+	bounds := screenshot.GetDisplayBounds(d)
+	img, err := screenshot.CaptureRect(bounds)
 	if err != nil {
-		log.Fatalln("Command failed to run:", err)
+		log.Panicln("Failed to take screenshot", err)
 	}
 
-	return elapsed
+	fileName := fmt.Sprintf("%vd%d_%06d.png", *prefix, d, i)
+	path := filepath.Join(dirName, fileName)
+	file, _ := os.Create(path)
+	defer file.Close()
+	png.Encode(file, img)
+	log.Debugf("Screenshot: %v", path)
 }
 
-func mean(times []time.Duration) time.Duration {
-	var sum int64
-	for _, v := range times {
-		sum += v.Nanoseconds()
-	}
-	return time.Duration(sum / int64(len(times)))
-}
+func record() {
+	t := *limit
+	for i := 0; i < t || t == -1; i++ {
+		log.Infof("Taking screenshot %06d", i)
 
-func stddev(times []time.Duration, mean time.Duration) time.Duration {
-	var total float64
-	for _, v := range times {
-		total += math.Pow(float64((v - mean).Nanoseconds()), 2)
+		for _, d := range *display {
+			if d >= screenshot.NumActiveDisplays() {
+				continue
+			}
+			capture(d, i)
+		}
+
+		time.Sleep(time.Duration(*interval) * time.Second)
 	}
-	return time.Duration(math.Sqrt(total / float64(len(times))))
 }
 
 func main() {
 	kingpin.CommandLine.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	// Set logging level
 	if *verbose {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	// Construct command
-	c := append(strings.Split(*shell, " "), *command...)
-	log.Debugf("Found command %v", c)
+	log.Debugf("display: %v", *display)
+	log.Debugf("interval: %v", *interval)
+	log.Debugf("limit: %v", *limit)
+	log.Debugf("prefix: %v", *prefix)
+	log.Debugf("verbosity: %v", log.GetLevel())
 
-	// Offset calibration
-	offset := time.Duration(0)
-	if *calibrate {
-		log.Debugf("Calibrating...")
-		s, _ := time.ParseDuration("2s")
-		offset = TimeCmd([]string{"sleep", "2"}, "CALIBRATION") - s
-		log.Debugf("Calibration time set: ", offset)
+	dirName = fmt.Sprintf("raw_%v", time.Now().Format("2006-01-02T150405"))
+
+	if *prefix != "" {
+		dirName = fmt.Sprintf("%v_%v", dirName, *prefix)
+		*prefix = fmt.Sprintf("%v_", *prefix)
 	}
 
-	// Run warm up run
-	if *cache {
-		TimeCmd(c, "CACHE")
-	}
+	log.Infof("Recording to %v", dirName)
+	os.MkdirAll(dirName, os.ModePerm)
 
-	// Actual timings
-	times := make([]time.Duration, *runs)
-	for i := 0; i < *runs; i++ {
-		times[i] = TimeCmd(c, strconv.Itoa(i+1)) - offset
-	}
-
-	// Find summary
-	m := mean(times)
-	sd := stddev(times, m)
-
-	fmt.Fprintln(os.Stdout, "mean", m)
-	fmt.Fprintln(os.Stdout, "stddev", sd)
+	record()
 }
