@@ -19,7 +19,7 @@ var (
 	calibrate = kingpin.Flag("calibrate", "Runs a 1 second calibration to adjust for potential overhead").Short('a').Bool()
 	command   = kingpin.Arg("command", "Command to execute").Required().Strings()
 	output    = kingpin.Flag("output", "Enable output of original command to stdout and stderr").Short('o').Bool()
-	runs      = kingpin.Flag("runs", "[WIP] Number of instances to run").Default("1").Short('r').Int()
+	runs      = kingpin.Flag("runs", "Number of instances to run").Default("1").Short('r').Int()
 	shell     = kingpin.Flag("shell", "Shell environment to execute command").Default("sh -c").String()
 	verbose   = kingpin.Flag("verbose", "Verbose mode").Short('v').Bool()
 )
