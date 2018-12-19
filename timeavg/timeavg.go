@@ -81,7 +81,13 @@ func main() {
 
 	// Construct command
 	c := append(strings.Split(*shell, " "), *command...)
-	log.Debugf("Found command %v", c)
+	log.Debugf("cache: %v", *cache)
+	log.Debugf("calibrate: %v", *calibrate)
+	log.Debugf("command: %v", *command)
+	log.Debugf("output: %v", *output)
+	log.Debugf("runs: %v", *runs)
+	log.Debugf("shell: %v", *shell)
+	log.Debugf("verbosity: %v", log.GetLevel())
 
 	// Offset calibration
 	offset := time.Duration(0)
@@ -89,7 +95,7 @@ func main() {
 		log.Debugf("Calibrating...")
 		s, _ := time.ParseDuration("2s")
 		offset = TimeCmd([]string{"sleep", "2"}, "CALIBRATION") - s
-		log.Debugf("Calibration time set: ", offset)
+		log.Debugln("Calibration time set: ", offset)
 	}
 
 	// Run warm up run
