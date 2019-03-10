@@ -28,6 +28,7 @@ func shift() {
 	}
 
 	// New backup
+	rm(getPath(*path, 1))
 	copy(*path, getPath(*path, 1))
 }
 
@@ -84,6 +85,7 @@ func main() {
 
 	ticker := time.NewTicker(time.Duration(*interval) * time.Second)
 	for range ticker.C {
+		log.Debugln("Tick")
 		shift()
 	}
 }
